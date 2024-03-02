@@ -227,7 +227,53 @@ class PrivateRecipieAPITests(TestCase):
                 user=self.user
             ).exists()
             self.assertTrue(exists)
+            
+    def test_create_tag_on_update(self):
+        """Test creating tag when updating a recipie"""
+        recipie=create_recipie(user=self.user)
+        payload={
+            'tags':[{'name':'Lunch'}]
+        }
+        url=detail_url(recipie.id)
+        res=self.client.patch(url,payload,format='json')
         
+        self.assertEqual(res.status_code,status.HTTP_200_OK)
+        new_tag=Tag.objects.get(user=self.user,name='Lunch')
+        self.assertIn(new_tag,recipie.tags.all())
+        
+    def test_update_recipie_assign_tag(self):
+        """Test assigning an existing tag when updating a recipie"""
+        tag_breakfast=Tag.objects.create(user=self.user,name='Breakfast')
+        recipie=create_recipie(user=self.user)
+        recipie.tags.add(tag_breakfast)
+        
+        tag_lunch=Tag.objects.create(user=self.user,name='Lunch')
+        payload={'tags':[{'name':'Lunch'}]}
+        url=detail_url(recipie.id)
+        
+        res=self.client.patch(url,payload,format='json')
+        
+        self.assertEqual(res.status_code,status.HTTP_200_OK)
+        self.assertIn(tag_lunch,recipie.tags.all())
+        self.assertNotIn(tag_breakfast,recipie.tags.all())
+        
+    def test_clear_recipie_tags(self):
+        """Test clearing a recipie tags"""
+        tag=Tag.objects.create(user=self.user,name='Dessert')
+        recipie=create_recipie(user=self.user)
+        recipie.tags.add(tag)
+        
+        payload={'tags':[]}
+        url=detail_url(recipie.id)
+        res=self.client.patch(url,payload,format='json')
+        
+        self.assertEqual(res.status_code,status.HTTP_200_OK)
+        self.assertEqual(recipie.tags.count(),0)
+        
+        
+        
+            
+            
         
         
 
