@@ -5,7 +5,7 @@ from django.test import TestCase
 from django.urls import reverse 
 from rest_framework import status 
 from rest_framework.test import APIClient
-from core.models import Recipie 
+from core.models import Recipie,Tag 
 from recipie.serializers import RecipieSerializer ,RecipieDetailSerializer
 
 RECIPIES_URL=reverse('recipie:recipie-list')
@@ -151,6 +151,83 @@ class PrivateRecipieAPITests(TestCase):
         for k,v in payload.items():
             self.assertEqual(getattr(recipie,k),v)
         self.assertEqual(recipie.user,self.user)
+        
+    def test_update_user_returns_error(self):
+        """Test changing the recipie user results in an error"""
+        new_user=create_user(email='test4@example.com',password='testpass123')
+        recipie=create_recipie(user=self.user)
+        
+        payload={'user':new_user.id}
+        url=detail_url(recipie.id)
+        self.client.patch(url,payload)
+        
+        recipie.refresh_from_db()
+        self.assertEqual(recipie.user,self.user)
+        
+    def test_delete_recipie(self):
+        """Test deleting a recipie successful"""
+        recipie=create_recipie(user=self.user)
+        url=detail_url(recipie.id)
+        res=self.client.delete(url)
+        
+        self.assertEqual(res.status_code,status.HTTP_204_NO_CONTENT)
+        self.assertFalse(Recipie.objects.filter(id=recipie.id).exists())
+        
+    def test_delete_recipie_other_users_recipie_errors(self):
+        """Test trying to delete another users recipie gives error"""
+        new_user=create_user(email='testuser@example.com',password='testpass123')
+        recipie=create_recipie(user=new_user)
+        url=detail_url(recipie.id)
+        res=self.client.delete(url)
+        
+        self.assertEqual(res.status_code,status.HTTP_404_NOT_FOUND)
+        self.assertTrue(Recipie.objects.filter(id=recipie.id).exists())
+        
+    def test_create_recipie_with_new_tags(self):
+        """Test creating a recipie with new tags"""
+        payload={
+            'title':'Chocolate Cake',
+            'time_minutes':30,
+            'price':Decimal('8.99'),
+            'tags':[{'name':'Chocolate'},{'name':'Dinner'}]
+        }        
+        res=self.client.post(RECIPIES_URL,payload,format='json')
+        
+        self.assertEqual(res.status_code,status.HTTP_201_CREATED)
+        recipies=Recipie.objects.filter(user=self.user)
+        self.assertEqual(recipies.count(),1)
+        recipie=recipies[0]
+        self.assertEqual(recipie.tags.count(),2) # line 192 there are 2 tags
+        for tag in payload['tags']:
+            exists=recipie.tags.filter(
+                name=tag['name'],
+                user=self.user
+            ).exists()
+            self.assertTrue(exists)
+            
+    def test_create_recipie_with_existing_tags(self):
+        """Test creating a recipie with existing tag"""
+        tag_american=Tag.objects.create(user=self.user,name='American')
+        payload={
+            'title':'Veg Burger',
+            'time_minutes':10,
+            'price':Decimal('4.50'),
+            'tags':[{'name':'American'},{'name':'Breakfast'}]
+        }
+        res=self.client.post(RECIPIES_URL,payload,format='json')
+        self.assertEqual(res.status_code,status.HTTP_201_CREATED)
+        recipies=Recipie.objects.filter(user=self.user)
+        self.assertEqual(recipies.count(),1)
+        recipie=recipies[0]
+        self.assertEqual(recipie.tags.count(),2)
+        self.assertIn(tag_american,recipie.tags.all())
+        for tag in payload['tags']:
+            exists=recipie.tags.filter(
+                name=tag['name'],
+                user=self.user
+            ).exists()
+            self.assertTrue(exists)
+        
         
         
 

@@ -5,6 +5,7 @@ from recipie import views
 
 router=DefaultRouter()
 router.register('recipies',views.RecipieViewSet)
+router.register('tags',views.TagViewSet)
 app_name='recipie'
 
 urlpatterns = [
