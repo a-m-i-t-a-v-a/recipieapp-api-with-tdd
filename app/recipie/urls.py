@@ -6,6 +6,7 @@ from recipie import views
 router=DefaultRouter()
 router.register('recipies',views.RecipieViewSet)
 router.register('tags',views.TagViewSet)
+router.register('ingredients',views.IngredientViewSet)
 app_name='recipie'
 
 urlpatterns = [

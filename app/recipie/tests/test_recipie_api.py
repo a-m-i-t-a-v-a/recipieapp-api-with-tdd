@@ -5,14 +5,21 @@ from django.test import TestCase
 from django.urls import reverse 
 from rest_framework import status 
 from rest_framework.test import APIClient
-from core.models import Recipie,Tag 
+from core.models import Recipie,Tag,Ingredient
 from recipie.serializers import RecipieSerializer ,RecipieDetailSerializer
+import tempfile
+import os 
+from PIL import Image 
 
 RECIPIES_URL=reverse('recipie:recipie-list')
 
 def detail_url(recipie_id):
     """Create and return a recipie detail URL"""
     return reverse('recipie:recipie-detail',args=[recipie_id])
+
+def image_upload_url(recipie_id):
+    """Create and return an image upload URL."""
+    return reverse('recipie:recipie-upload-image',args=[recipie_id])
 
 def create_recipie(user,**params):
     """Create and return a sample recipie"""
@@ -269,6 +276,172 @@ class PrivateRecipieAPITests(TestCase):
         
         self.assertEqual(res.status_code,status.HTTP_200_OK)
         self.assertEqual(recipie.tags.count(),0)
+        
+    def test_create_recipie_with_new_ingredients(self):
+        """Test creating a recipie with new ingredients"""
+        payload={
+            'title':'Paneer Tacos',
+            'time_minutes':60,
+            'price':Decimal('7.55'),
+            'ingredients':[{'name':'Paneer'},{'name':'Salt'}]
+        }
+        res=self.client.post(RECIPIES_URL,payload,format='json')
+        self.assertEqual(res.status_code,status.HTTP_201_CREATED)
+        recipies=Recipie.objects.filter(user=self.user)
+        self.assertEqual(recipies.count(),1)
+        recipie=recipies[0]
+        self.assertEqual(recipie.ingredients.count(),2)
+        for ingredient in payload['ingredients']:
+            exists=recipie.ingredients.filter(
+                name=ingredient['name'],
+                user=self.user,
+            ).exists()
+            self.assertTrue(exists)
+            
+    def test_create_recipie_with_existing_ingredients(self):
+        """Test creating a new recipie with existing ingredient"""
+        ingredient=Ingredient.objects.create(user=self.user,name='Potato')
+        payload={
+            'title':'German Soup',
+            'time_minutes':25,
+            'price':Decimal('5.25'),
+            'ingredients':[{'name':'Potato'},{'name':'Mashed'}],
+        }
+        res=self.client.post(RECIPIES_URL,payload,format='json')
+        self.assertEqual(res.status_code,status.HTTP_201_CREATED)
+        recipies=Recipie.objects.filter(user=self.user)
+        self.assertEqual(recipies.count(),1)
+        recipie=recipies[0]
+        self.assertEqual(recipie.ingredients.count(),2)
+        self.assertIn(ingredient,recipie.ingredients.all())
+        for ingredient in payload['ingredients']:
+            exists=recipie.ingredients.filter(
+                name=ingredient['name'],
+                user=self.user
+            ).exists()
+            self.assertTrue(exists)
+            
+    def test_create_ingredient_on_update(self):
+        """Test creating an ingredient when updating a recipie"""
+        recipie=create_recipie(user=self.user)
+        payload={'ingredients':[{'name':'Limes'}]}
+        url=detail_url(recipie.id)
+        
+        res=self.client.patch(url,payload,format='json')
+        
+        self.assertEqual(res.status_code,status.HTTP_200_OK)
+        new_ingredient=Ingredient.objects.get(user=self.user,name='Limes')
+        self.assertIn(new_ingredient,recipie.ingredients.all())
+        
+    def test_update_recipie_assign_ingredient(self):
+        """Test assigning an existing ingredient when assigning a recipie"""
+        ingredient1=Ingredient.objects.create(user=self.user,name='Pepper')
+        recipie=create_recipie(user=self.user)
+        recipie.ingredients.add(ingredient1)
+        
+        ingredient2=Ingredient.objects.create(user=self.user,name='Sugar')
+        payload={'ingredients':[{'name':'Sugar'}]}
+        url=detail_url(recipie.id)
+        res=self.client.patch(url,payload,format='json')
+        
+        self.assertEqual(res.status_code,status.HTTP_200_OK)
+        self.assertIn(ingredient2,recipie.ingredients.all())
+        self.assertNotIn(ingredient1,recipie.ingredients.all())
+        
+    def test_clear_recipie_ingredients(self):
+        """Test clearing a recipies ingredient"""
+        ingredient=Ingredient.objects.create(user=self.user,name='Garlic')
+        recipie=create_recipie(user=self.user)
+        recipie.ingredients.add(ingredient)
+        
+        payload={'ingredients':[]}
+        url=detail_url(recipie.id)
+        res=self.client.patch(url,payload,format='json')
+        
+        self.assertEqual(res.status_code,status.HTTP_200_OK)
+        self.assertEqual(recipie.ingredients.count(),0)
+        
+    def test_filter_by_tags(self):
+        """Test filtering recipies by tags."""
+        r1=create_recipie(user=self.user,title='Hobbit Mushroom Curry')
+        r2=create_recipie(user=self.user,title='Elvish Lambas Bread')
+        tag1=Tag.objects.create(user=self.user,name='Vegan')
+        tag2=Tag.objects.create(user=self.user,name='Vegetarian')
+        r1.tags.add(tag1)
+        r2.tags.add(tag2)
+        r3=create_recipie(user=self.user,title='Choco Lava Cake')
+        
+        params={'tags':f'{tag1.id} {tag2.id}'}
+        res=self.client.get(RECIPIES_URL,params)
+        
+        s1=RecipieSerializer(r1)
+        s2=RecipieSerializer(r2)
+        s3=RecipieSerializer(r3)
+        self.assertIn(s1.data,res.data)
+        self.assertIn(s2.data,res.data)
+        self.assertNotIn(s3.data,res.data)
+        
+    def test_filter_by_ingredients(self):
+        """Test filtering recipies by ingredients"""
+        r1=create_recipie(user=self.user,title='Posh Beans on Toast')
+        r2=create_recipie(user=self.user,title='Sahi Paneer')
+        in1=Ingredient.objects.create(user=self.user,name='Feta Cheese')
+        in2=Ingredient.objects.create(user=self.user,name='Paneer')
+        r1.ingredients.add(in1)
+        r2.ingredients.add(in2)
+        r3=create_recipie(user=self.user,title='American Veg Chopsuey')
+        
+        params={'ingredients':f'{in1.id} {in2.id}'}
+        res=self.client.get(RECIPIES_URL,params)
+        
+        s1=RecipieSerializer(r1)
+        s2=RecipieSerializer(r2)
+        s3=RecipieSerializer(r3)
+        self.assertIn(s1.data,res.data)
+        self.assertIn(s2.data,res.data)
+        self.assertNotIn(s3.data,res.data)
+        
+class ImageUploadTests(TestCase):
+    """Tests for the image upload API."""
+    def setUp(self):
+        self.client=APIClient()
+        self.user=get_user_model().objects.create_user(
+            'user@example.com',
+            'password123'
+        )
+        self.client.force_authenticate(self.user)
+        self.recipie=create_recipie(user=self.user)
+        
+    def tearDown(self): #this runs AFTER test runs
+        self.recipie.image.delete()
+        
+    def test_upload_image(self):
+        """Test uploading image to a recipie"""
+        url=image_upload_url(self.recipie.id)
+        with tempfile.NamedTemporaryFile(suffix='.jpg') as image_file:
+            img=Image.new('RGB',(10,10))
+            img.save(image_file,format='JPEG')
+            image_file.seek(0)
+            payload={'image':image_file}
+            res=self.client.post(url,payload,format='multipart')
+            
+        self.recipie.refresh_from_db()
+        self.assertEqual(res.status_code,status.HTTP_200_OK)
+        self.assertIn('image',res.data)
+        self.assertTrue(os.path.exists(self.recipie.image.path))
+        
+    def test_upload_image_bad_request(self):
+        """Test uploading invalid image"""
+        url=image_upload_url(self.recipie.id)
+        payload={'image':'notanimage'}
+        res=self.client.post(url,payload,format='multipart')
+        self.assertEqual(res.status_code,status.HTTP_400_BAD_REQUEST)
+        
+            
+    
+        
+    
+        
         
         
         

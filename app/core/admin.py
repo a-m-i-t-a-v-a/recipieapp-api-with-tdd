@@ -44,7 +44,12 @@ class RecipieAdmin(admin.ModelAdmin):
 class TagAdmin(admin.ModelAdmin):
     list_display=('name',)
     list_filter=('name',)
+    
+class IngredientAdmin(admin.ModelAdmin):
+    list_display=('name',)
+    list_filter=('name',)
 
 admin.site.register(models.User,UserAdmin)
 admin.site.register(models.Recipie,RecipieAdmin)
 admin.site.register(models.Tag,TagAdmin)
+admin.site.register(models.Ingredient,IngredientAdmin)
