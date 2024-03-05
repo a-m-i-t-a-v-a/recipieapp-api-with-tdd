@@ -21,6 +21,22 @@ from core.models import (
     )
 from . import serializers
 
+@extend_schema_view(
+    list=extend_schema(
+        parameters=[
+            OpenApiParameter(
+                'tags',
+                OpenApiTypes.STR,
+                description='Comma separated list of IDs to filter',
+            ),
+            OpenApiParameter(
+                'ingredients',
+                OpenApiTypes.STR,
+                description='Comma separated list of ingredient IDs to filter',
+            )
+        ]
+    )
+)
 class RecipieViewSet(viewsets.ModelViewSet):
     """View for manage recipie APIs"""
     serializer_class=serializers.RecipieDetailSerializer
@@ -39,10 +55,10 @@ class RecipieViewSet(viewsets.ModelViewSet):
         queryset=self.queryset
         if tags:
             tag_ids=self._params_to_ints(tags)
-            queryset=queryset.filter(tag__id__in=tag_ids)
+            queryset=queryset.filter(tags__id__in=tag_ids)
         if ingredients:
             ingredient_ids=self._params_to_ints(ingredients)
-            queryset=queryset.filter(ingredient__id__in=ingredient_ids)
+            queryset=queryset.filter(ingredients__id__in=ingredient_ids)
         return queryset.filter(user=self.request.user).order_by('-id').distinct()
     
     def get_serializer_class(self):
@@ -66,14 +82,34 @@ class RecipieViewSet(viewsets.ModelViewSet):
             serializer.save()
             return Response(serializer.data,status=status.HTTP_200_OK)
         return Response(serializer.errors,status=status.HTTP_400_BAD_REQUEST)
-        
-class BaseRecipieAttrViewSet(mixins.UpdateModelMixin,mixins.DestroyModelMixin,mixins.ListModelMixin,viewsets.GenericViewSet):
+
+@extend_schema_view(
+    list=extend_schema(
+        parameters=[
+            OpenApiParameter(
+                'assigned_only',
+                OpenApiTypes.INT,enum=[0,1],
+                description='Filter by items assigned to recipies.',
+            )
+        ]
+    )
+)      
+class BaseRecipieAttrViewSet(mixins.UpdateModelMixin,
+                             mixins.DestroyModelMixin,
+                             mixins.ListModelMixin,
+                             viewsets.GenericViewSet):
     """Base viewset for recipie attributes"""
     authentication_classes=[TokenAuthentication]
     permission_classes=[IsAuthenticated]
     def get_queryset(self):
         """Filter queryset to authenticated user"""
-        return self.queryset.filter(user=self.request.user).order_by('-name')
+        assigned_only=bool(
+            int(self.request.query_params.get('assigned_only',0))
+        )
+        queryset=self.queryset 
+        if assigned_only:
+            queryset=queryset.filter(recipie__isnull=False)
+        return queryset.filter(user=self.request.user).order_by('-name').distinct()
     
 class TagViewSet(BaseRecipieAttrViewSet):
     """Manage tags in the database"""

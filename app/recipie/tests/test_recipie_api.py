@@ -371,7 +371,7 @@ class PrivateRecipieAPITests(TestCase):
         r2.tags.add(tag2)
         r3=create_recipie(user=self.user,title='Choco Lava Cake')
         
-        params={'tags':f'{tag1.id} {tag2.id}'}
+        params={'tags':f'{tag1.id},{tag2.id}'}
         res=self.client.get(RECIPIES_URL,params)
         
         s1=RecipieSerializer(r1)
@@ -391,7 +391,7 @@ class PrivateRecipieAPITests(TestCase):
         r2.ingredients.add(in2)
         r3=create_recipie(user=self.user,title='American Veg Chopsuey')
         
-        params={'ingredients':f'{in1.id} {in2.id}'}
+        params={'ingredients':f'{in1.id},{in2.id}'}
         res=self.client.get(RECIPIES_URL,params)
         
         s1=RecipieSerializer(r1)
